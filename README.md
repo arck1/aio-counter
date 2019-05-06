@@ -1,5 +1,11 @@
 Async counter with decrement after timeout (ttl)
 
+Install
+-------
+    pip install git+https://github.com/arck1/aio-counter
+
+Examples
+-------
 ```
 counter = AioCounter(max_count=10, start_count=0, ttl=1, loop=loop)
 
