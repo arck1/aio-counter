@@ -1,3 +1,4 @@
+import setuptools
 from setuptools import setup, find_packages
 
 with open('README.md', encoding='utf-8') as f:
@@ -20,8 +21,7 @@ setup(
     download_url='https://github.com/arck1/aio-counter/archive/v{}.zip'.format(
         version
     ),
-    install_requires=[
-    ],
+    license='MIT',
     classifiers=[
         'License :: OSI Approved :: MIT License',
         'Intended Audience :: Developers',
@@ -31,5 +31,8 @@ setup(
         'Topic :: Software Development :: Libraries :: Python Modules',
         'Programming Language :: Python :: Implementation :: CPython',
     ],
+    zip_safe=False,
+    python_requires='>=3.7',
+    packages=find_packages(exclude=["examples"]),
     keywords='aio asyncio counter inc dec increment decrement ttl'
 )

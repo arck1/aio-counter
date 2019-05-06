@@ -35,6 +35,10 @@ class AioCounter:
 
         self._handlers = {}
 
+    @property
+    def count(self):
+        return self._count
+
     def _wakeup_next(self, waiters):
         # Wake up the next waiter (if any) that isn't cancelled.
         while waiters:
@@ -78,7 +82,7 @@ class AioCounter:
                                       f"greater than max_count = {self._max_count}")
         self._count += value
 
-        self._wakeup_next(self._incs)
+        self._wakeup_next(self._decs)
 
         ttl = ttl or self._ttl
 
@@ -98,7 +102,7 @@ class AioCounter:
             raise AioCounterException(f"New counter value = {self._count + value} "
                                       f"less than Zero)")
         self._count -= value
-        self._wakeup_next(self._decs)
+        self._wakeup_next(self._incs)
         return self._count
 
     def __dec_callback(self, key, value):
