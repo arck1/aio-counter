@@ -1,15 +1,16 @@
 import asyncio
 import collections
 import uuid
-from .exceptions import AioCounterException
+from typing import Optional, Union
+
+from aio_counter.exceptions import AioCounterException
 
 
 class AioCounter:
-
     _MAX_COUNT = 100
     _TTL = 5
 
-    def __init__(self, max_count: int, start_count: int = 0, ttl: int = None, loop=None):
+    def __init__(self, max_count: int, start_count: int = 0, ttl: Optional[int] = None, loop=None):
         """
         Control request rate per period
         :param max_count:
@@ -36,11 +37,27 @@ class AioCounter:
         self._handlers = {}
 
     @property
-    def count(self):
+    def count(self) -> int:
+        """
+        Return AioCounter current value
+        :return:
+        """
         return self._count
 
-    def _wakeup_next(self, waiters):
-        # Wake up the next waiter (if any) that isn't cancelled.
+    @property
+    def max_count(self) -> int:
+        """
+        Return AioCounter  max_count value
+        :return:
+        """
+        return self._max_count
+
+    def _wakeup_next(self, waiters: collections.deque):
+        """
+        Wake up the next waiter (if any) that isn't cancelled.
+        :param waiters:
+        :return:
+        """
         while waiters:
             waiter = waiters.popleft()
             if not waiter.done():
@@ -48,29 +65,63 @@ class AioCounter:
                 break
 
     def normalize(self):
+        """
+        If counter not initialize or broken
+        :return:
+        """
         if self._count is None:
             self._count = 0
 
-    def empty(self):
-        self.normalize()
-        return self._count == 0
+        """
+        Check if self._count between 0 and self._max_count
+        """
+        self._count = max(
+            min(self._count, self._max_count),
+            0
+        )
 
-    def full(self):
+    def empty(self) -> bool:
         self.normalize()
-        return self._count == self._max_count
+        return self.count <= 0
 
-    def get_key(self):
+    def full(self) -> bool:
+        self.normalize()
+        return self.count >= self._max_count
+
+    def can_dec(self, value: int = 1) -> bool:
+        return self.count > max(0, value)
+
+    def can_inc(self, value: int = 1) -> bool:
+        return self.count + max(0, value) <= self._max_count
+
+    def get_key(self) -> str:
+        """
+        Return key for callback
+        :return:
+        """
         return uuid.uuid4().hex
 
     def cancel(self):
+        """
+        Graceful shutdown and close handlers
+        :return:
+        """
         for key, handler in self._handlers.items():
             try:
                 handler.cancel()
             except:
                 pass
 
-    def inc_nowait(self, ttl: int = None, value: int = 1):
+    def close(self):
+        self.cancel()
 
+    def inc_nowait(self, ttl: Optional[int] = None, value: int = 1) -> int:
+        """
+        Direct synchronous increment counter
+        :param ttl: Optional[int] - time to live, if None ttl = INF
+        :param value: int
+        :return:
+        """
         if self.full():
             raise AioCounterException("Counter is full")
 
@@ -89,9 +140,15 @@ class AioCounter:
         if ttl is not None and ttl > 0:
             key = self.get_key()
             self._handlers[key] = self._loop.call_later(ttl, self.__dec_callback, key, value)
-        return self._count
+        return self.count
 
-    def dec_nowait(self, value: int = 1):
+    def dec_nowait(self, value: int = 1) -> int:
+        """
+        Direct synchronous decrement counter
+        :param value:
+        :return:
+        :raise AioCounterException if can't dec counter
+        """
         if self.empty():
             raise AioCounterException("Counter is empty")
 
@@ -103,9 +160,15 @@ class AioCounter:
                                       f"less than Zero)")
         self._count -= value
         self._wakeup_next(self._incs)
-        return self._count
+        return self.count
 
-    def __dec_callback(self, key, value):
+    def __dec_callback(self, key, value: int = 1) -> Union[0, 1]:
+        """
+        Callback wrapper for dec counter after ttl
+        :param key:
+        :param value:
+        :return:
+        """
         try:
             self.dec_nowait(value=value)
         except:
@@ -117,8 +180,15 @@ class AioCounter:
             return 1
         return 0
 
-    async def inc(self, ttl: int = None, value: int = 1):
-        while self.full():
+    async def inc(self, ttl: Optional[int] = None, value: int = 1) -> int:
+        """
+        Async increment of counter
+        If Counter is full(), wait free slots
+        :param ttl:
+        :param value:
+        :return:
+        """
+        while not self.can_inc(value=value):
             incer = self._loop.create_future()
             self._incs.append(incer)
             try:
@@ -139,8 +209,14 @@ class AioCounter:
                 raise
         return self.inc_nowait(ttl=ttl, value=value)
 
-    async def dec(self, value: int = 1):
-        while self.empty():
+    async def dec(self, value: int = 1) -> int:
+        """
+        Async decrement of counter
+        if counter is empty(), wait any increment
+        :param value:
+        :return:
+        """
+        while not self.can_dec(value=value):
             decer = self._loop.create_future()
             self._decs.append(decer)
             try:
@@ -160,3 +236,9 @@ class AioCounter:
                     self._wakeup_next(self._decs)
                 raise
         return self.dec_nowait(value=value)
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        self.cancel()

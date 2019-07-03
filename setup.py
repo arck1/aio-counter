@@ -33,6 +33,6 @@ setup(
     ],
     zip_safe=False,
     python_requires='>=3.7',
-    packages=find_packages(exclude=["examples"]),
+    packages=find_packages(exclude=["examples", "tests"]),
     keywords='aio asyncio counter inc dec increment decrement ttl'
 )
