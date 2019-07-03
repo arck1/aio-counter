@@ -3,14 +3,15 @@ import collections
 import uuid
 from typing import Optional, Union
 
-from aio_counter.exceptions import AioCounterException
+from .exceptions import AioCounterException
 
 
 class AioCounter:
     _MAX_COUNT = 100
     _TTL = 5
 
-    def __init__(self, max_count: int, start_count: int = 0, ttl: Optional[int] = None, loop=None):
+    def __init__(self, max_count: Optional[int] = None, start_count: int = 0, ttl: Optional[int] = _TTL,
+                 loop=None):
         """
         Control request rate per period
         :param max_count:
@@ -18,6 +19,9 @@ class AioCounter:
         :param ttl:
         :param loop:
         """
+        if max_count is None:
+            max_count = self._MAX_COUNT
+
         if max_count is None or max_count <= 0:
             raise ValueError(f"max_count: int should be positive integer value, not {str(max_count)}")
 
@@ -89,7 +93,7 @@ class AioCounter:
         return self.count >= self._max_count
 
     def can_dec(self, value: int = 1) -> bool:
-        return self.count > max(0, value)
+        return self.count >= max(0, value)
 
     def can_inc(self, value: int = 1) -> bool:
         return self.count + max(0, value) <= self._max_count
@@ -118,7 +122,7 @@ class AioCounter:
     def inc_nowait(self, ttl: Optional[int] = None, value: int = 1) -> int:
         """
         Direct synchronous increment counter
-        :param ttl: Optional[int] - time to live, if None ttl = INF
+        :param ttl: Optional[int] - time to live in seconds, if None ttl = INF
         :param value: int
         :return:
         """
@@ -162,7 +166,7 @@ class AioCounter:
         self._wakeup_next(self._incs)
         return self.count
 
-    def __dec_callback(self, key, value: int = 1) -> Union[0, 1]:
+    def __dec_callback(self, key, value: int = 1) -> int:
         """
         Callback wrapper for dec counter after ttl
         :param key:
@@ -184,7 +188,7 @@ class AioCounter:
         """
         Async increment of counter
         If Counter is full(), wait free slots
-        :param ttl:
+        :param ttl: seconds
         :param value:
         :return:
         """
